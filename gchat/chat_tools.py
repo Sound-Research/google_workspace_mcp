@@ -351,13 +351,8 @@ async def search_messages(
         f"[search_messages] Email={user_google_email}, Query='{query}', TimeFilter='{time_filter}'"
     )
 
-    # Build combined filter string
-    filter_parts = []
-    if query:
-        filter_parts.append(f'text:"{query}"')
-    if time_filter:
-        filter_parts.append(time_filter)
-    filter_str = " AND ".join(filter_parts) if filter_parts else None
+    # Build API filter string (only createTime/thread.name operators are supported)
+    filter_str = time_filter or None
 
     search_terms = []
     if query:
@@ -402,6 +397,13 @@ async def search_messages(
                 )
                 continue
         context = "all accessible spaces"
+
+    # Client-side text filtering (text: operator is not supported by the API)
+    if query:
+        query_lower = query.lower()
+        messages = [
+            m for m in messages if query_lower in (m.get("text") or "").lower()
+        ]
 
     if not messages:
         return f"No messages found matching '{search_desc}' in {context}."
