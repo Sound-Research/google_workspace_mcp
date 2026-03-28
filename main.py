@@ -204,6 +204,30 @@ def main():
     )
     args = parser.parse_args()
 
+    # Env var fallbacks for plugin users who configure via userConfig
+    _VALID_SERVICES = {
+        "gmail", "drive", "calendar", "docs", "sheets", "chat",
+        "forms", "slides", "tasks", "contacts", "search", "appscript",
+    }
+    if args.tools is None:
+        _env_tools = os.getenv("WORKSPACE_MCP_TOOLS")
+        if _env_tools:
+            _parsed = [t.strip() for t in _env_tools.split(",") if t.strip() in _VALID_SERVICES]
+            if _parsed:
+                args.tools = _parsed
+    if args.tool_tier is None:
+        _env_tier = os.getenv("WORKSPACE_MCP_TOOL_TIER")
+        if _env_tier in {"core", "extended", "complete"}:
+            args.tool_tier = _env_tier
+    if not args.read_only:
+        _env_ro = os.getenv("WORKSPACE_MCP_READ_ONLY", "").lower()
+        if _env_ro in {"true", "1", "yes"}:
+            args.read_only = True
+    if args.permissions is None:
+        _env_perms = os.getenv("WORKSPACE_MCP_PERMISSIONS")
+        if _env_perms:
+            args.permissions = _env_perms.split()
+
     # Validate mutually exclusive flags
     if args.permissions and args.read_only:
         print(

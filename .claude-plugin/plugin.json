@@ -20,21 +20,46 @@
       "sensitive": true,
       "required": true
     },
-    "server_args": {
-      "title": "Server arguments",
-      "description": "CLI arguments for the MCP server. Examples: --tools gmail drive, --tool-tier core, --read-only, --permissions gmail:send drive:readonly. Leave empty for all tools with full access.",
+    "tools": {
+      "title": "Services to enable",
+      "description": "Comma-separated list: gmail, drive, calendar, docs, sheets, chat, forms, slides, tasks, contacts, search, appscript. Leave blank for all.",
       "type": "string",
       "sensitive": false,
-      "required": true
+      "required": false
+    },
+    "tool_tier": {
+      "title": "Tool tier",
+      "description": "core, extended, or complete. Leave blank for all tools.",
+      "type": "string",
+      "sensitive": false,
+      "required": false
+    },
+    "read_only": {
+      "title": "Read-only mode",
+      "description": "Restrict to read-only scopes (no send, create, delete)",
+      "type": "boolean",
+      "sensitive": false,
+      "required": false
+    },
+    "permissions": {
+      "title": "Per-service permissions",
+      "description": "Space-separated service:level pairs. Example: gmail:send drive:readonly. Gmail levels: readonly, organize, drafts, send, full. Other services: readonly, full. Mutually exclusive with read-only and tools.",
+      "type": "string",
+      "sensitive": false,
+      "required": false
     }
   },
   "mcpServers": {
     "google-workspace": {
       "command": "uv",
-      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "main.py", "${user_config.server_args}"],
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "main.py"],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "${user_config.google_oauth_client_id}",
-        "GOOGLE_OAUTH_CLIENT_SECRET": "${user_config.google_oauth_client_secret}"
+        "GOOGLE_OAUTH_CLIENT_SECRET": "${user_config.google_oauth_client_secret}",
+        "WORKSPACE_MCP_TOOLS": "${user_config.tools}",
+        "WORKSPACE_MCP_TOOL_TIER": "${user_config.tool_tier}",
+        "WORKSPACE_MCP_READ_ONLY": "${user_config.read_only}",
+        "WORKSPACE_MCP_PERMISSIONS": "${user_config.permissions}"
       }
     }
   }
