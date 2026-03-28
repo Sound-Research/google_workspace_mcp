@@ -5,10 +5,24 @@
   "author": {
     "name": "taylorwilsdon"
   },
+  "userConfig": {
+    "google_oauth_client_id": {
+      "description": "Google OAuth 2.0 Client ID",
+      "sensitive": false
+    },
+    "google_oauth_client_secret": {
+      "description": "Google OAuth 2.0 Client Secret",
+      "sensitive": true
+    }
+  },
   "mcpServers": {
     "google-workspace": {
       "command": "uv",
-      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "main.py"]
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "main.py"],
+      "env": {
+        "GOOGLE_OAUTH_CLIENT_ID": "${user_config.google_oauth_client_id}",
+        "GOOGLE_OAUTH_CLIENT_SECRET": "${user_config.google_oauth_client_secret}"
+      }
     }
   }
 }
