@@ -204,6 +204,23 @@ def main():
     )
     args = parser.parse_args()
 
+    # Apply env var fallbacks for tool filtering (allows plugin users to configure
+    # via settings.json env block without overriding the plugin MCP config)
+    _VALID_SERVICES = {
+        "gmail", "drive", "calendar", "docs", "sheets", "chat",
+        "forms", "slides", "tasks", "contacts", "search", "appscript",
+    }
+    if args.tools is None:
+        _env_tools = os.getenv("WORKSPACE_MCP_TOOLS")
+        if _env_tools:
+            _parsed = [t.strip() for t in _env_tools.split(",") if t.strip() in _VALID_SERVICES]
+            if _parsed:
+                args.tools = _parsed
+    if args.tool_tier is None:
+        _env_tier = os.getenv("WORKSPACE_MCP_TOOL_TIER")
+        if _env_tier in {"core", "extended", "complete"}:
+            args.tool_tier = _env_tier
+
     # Validate mutually exclusive flags
     if args.permissions and args.read_only:
         print(
