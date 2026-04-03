@@ -37,6 +37,7 @@ from gdocs.docs_helpers import (
     create_delete_table_column_request,
     create_merge_table_cells_request,
     create_unmerge_table_cells_request,
+    create_update_table_column_properties_request,
     validate_operation,
 )
 from gdocs.managers.validation_manager import ValidationManager
@@ -779,6 +780,19 @@ class BatchOperationManager:
                 f"span {op['row_span']}x{op['column_span']} in table at {op['table_start_index']}"
             )
 
+        elif op_type == "update_table_column_properties":
+            request = create_update_table_column_properties_request(
+                table_start_index=op["table_start_index"],
+                column_indices=op["column_indices"],
+                width=op.get("width"),
+                width_type=op.get("width_type"),
+                tab_id=tab_id,
+            )
+            description = (
+                f"update column properties for columns {op['column_indices']} "
+                f"in table at {op['table_start_index']}"
+            )
+
         else:
             supported_types = [
                 "insert_text",
@@ -808,6 +822,7 @@ class BatchOperationManager:
                 "delete_table_column",
                 "merge_table_cells",
                 "unmerge_table_cells",
+                "update_table_column_properties",
             ]
             raise ValueError(
                 f"Unsupported operation type '{op_type}'. Supported: {', '.join(supported_types)}"
@@ -1128,6 +1143,11 @@ class BatchOperationManager:
                     "required": ["table_start_index", "row_index", "column_index", "row_span", "column_span"],
                     "optional": ["tab_id"],
                     "description": "Unmerge cells in a table that were previously merged",
+                },
+                "update_table_column_properties": {
+                    "required": ["table_start_index", "column_indices"],
+                    "optional": ["width", "width_type", "tab_id"],
+                    "description": "Update column width and width type for specified columns in a table",
                 },
             },
             "example_operations": [

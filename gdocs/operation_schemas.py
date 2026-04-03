@@ -203,6 +203,14 @@ class UnmergeTableCellsOperation(StrictDocOperation):
     column_span: int
 
 
+class UpdateTableColumnPropertiesOperation(StrictDocOperation):
+    type: Literal["update_table_column_properties"]
+    table_start_index: int
+    column_indices: list[int]
+    width: Optional[float] = None
+    width_type: Optional[str] = None
+
+
 class InsertPageBreakOperation(StrictDocOperation):
     type: Literal["insert_page_break"]
     index: Optional[int] = Field(
@@ -405,6 +413,7 @@ BatchDocOperation = Annotated[
         DeleteTableColumnOperation,
         MergeTableCellsOperation,
         UnmergeTableCellsOperation,
+        UpdateTableColumnPropertiesOperation,
         InsertPageBreakOperation,
         InsertSectionBreakOperation,
         FindReplaceOperation,

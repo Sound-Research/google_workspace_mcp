@@ -1596,6 +1596,39 @@ def create_unmerge_table_cells_request(
     )}
 
 
+def create_update_table_column_properties_request(
+    table_start_index: int,
+    column_indices: list,
+    width: float = None,
+    width_type: str = None,
+    tab_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build an updateTableColumnProperties request."""
+    location: Dict[str, Any] = {"index": table_start_index}
+    if tab_id:
+        location["tabId"] = tab_id
+
+    properties: Dict[str, Any] = {}
+    fields = []
+
+    if width is not None:
+        properties["width"] = {"magnitude": width, "unit": "PT"}
+        fields.append("width")
+
+    if width_type is not None:
+        properties["widthType"] = width_type
+        fields.append("widthType")
+
+    return {
+        "updateTableColumnProperties": {
+            "tableStartLocation": location,
+            "columnIndices": column_indices,
+            "tableColumnProperties": properties,
+            "fields": ",".join(fields),
+        }
+    }
+
+
 def validate_operation(operation: Dict[str, Any]) -> tuple[bool, str]:
     """
     Validate a batch operation dictionary.
@@ -1639,6 +1672,7 @@ def validate_operation(operation: Dict[str, Any]) -> tuple[bool, str]:
         "delete_table_column": ["table_start_index", "column_index"],
         "merge_table_cells": ["table_start_index", "row_index", "column_index", "row_span", "column_span"],
         "unmerge_table_cells": ["table_start_index", "row_index", "column_index", "row_span", "column_span"],
+        "update_table_column_properties": ["table_start_index", "column_indices"],
     }
 
     if op_type not in required_fields:

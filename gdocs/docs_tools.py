@@ -1105,6 +1105,10 @@ async def batch_update_doc(
                        - required: table_start_index (int), row_index (int),
                                    column_index (int), row_span (int), column_span (int)
                          optional: tab_id
+      update_table_column_properties
+                       - required: table_start_index (int), column_indices (list[int])
+                         optional: width (float, points), width_type
+                                   (FIXED_WIDTH|EVENLY_DISTRIBUTED), tab_id
       insert_page_break- optional: index (int), end_of_segment, tab_id
       insert_section_break
                        - optional: index (int), end_of_segment, section_type
