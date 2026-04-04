@@ -542,7 +542,32 @@ def main():
                 stateless_http=is_stateless_mode(),
             )
         else:
-            server.run()
+            # Run stdio + HTTP listener concurrently so workspace-cli can connect
+            import asyncio
+            import uvicorn
+
+            http_port = port + 1  # workspace-cli HTTP on port 8001 (8000 used by OAuth callback)
+
+            async def _run_dual():
+                http_available = True
+                try:
+                    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                        s.bind((host, http_port))
+                except OSError:
+                    logger.warning("Port %d in use, workspace-cli HTTP endpoint unavailable", http_port)
+                    http_available = False
+
+                tasks = [server.run_stdio_async()]
+                if http_available:
+                    app = server.http_app(path="/mcp")
+                    config = uvicorn.Config(app, host=host, port=http_port, log_level="warning")
+                    http_srv = uvicorn.Server(config)
+                    tasks.append(http_srv.serve())
+                    safe_print(f"   workspace-cli endpoint: http://{host}:{http_port}/mcp")
+
+                await asyncio.gather(*tasks)
+
+            asyncio.run(_run_dual())
     except KeyboardInterrupt:
         safe_print("\n👋 Server shutdown requested")
         # Clean up OAuth callback server if running

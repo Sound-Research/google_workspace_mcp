@@ -51,9 +51,8 @@
   },
   "mcpServers": {
     "google-workspace": {
-      "type": "http",
       "command": "uv",
-      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "main.py", "--transport", "streamable-http"],
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "main.py"],
       "env": {
         "GOOGLE_OAUTH_CLIENT_ID": "${user_config.google_oauth_client_id}",
         "GOOGLE_OAUTH_CLIENT_SECRET": "${user_config.google_oauth_client_secret}",
@@ -62,8 +61,7 @@
         "WORKSPACE_MCP_READ_ONLY": "${user_config.read_only}",
         "WORKSPACE_MCP_PERMISSIONS": "${user_config.permissions}",
         "OAUTHLIB_INSECURE_TRANSPORT": "1"
-      },
-      "url": "http://localhost:8000/mcp"
+      }
     }
   }
 }
