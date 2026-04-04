@@ -46,11 +46,24 @@ logger = logging.getLogger(__name__)
 
 configure_file_logging()
 
-SERVICE_NAMES = (
-    "gmail", "drive", "calendar", "docs", "sheets", "chat",
-    "forms", "slides", "tasks", "contacts", "search", "appscript",
-)
-VALID_SERVICES = frozenset(SERVICE_NAMES)
+# Single source of truth: service name -> module path.
+# SERVICE_NAMES and VALID_SERVICES are derived from this mapping.
+SERVICE_MODULES = {
+    "gmail": "gmail.gmail_tools",
+    "drive": "gdrive.drive_tools",
+    "calendar": "gcalendar.calendar_tools",
+    "docs": "gdocs.docs_tools",
+    "sheets": "gsheets.sheets_tools",
+    "chat": "gchat.chat_tools",
+    "forms": "gforms.forms_tools",
+    "slides": "gslides.slides_tools",
+    "tasks": "gtasks.tasks_tools",
+    "contacts": "gcontacts.contacts_tools",
+    "search": "gsearch.search_tools",
+    "appscript": "gappsscript.apps_script_tools",
+}
+SERVICE_NAMES = tuple(SERVICE_MODULES)
+VALID_SERVICES = frozenset(SERVICE_MODULES)
 
 
 def safe_print(text):
@@ -199,32 +212,49 @@ def main():
     )
     args = parser.parse_args()
 
-    # Env var fallbacks for plugin users who configure via userConfig
+    # Env var fallbacks for plugin users who configure via userConfig.
+    # Non-empty but invalid values fail closed to prevent silent access widening.
     if args.tools is None:
-        _env_tools = os.getenv("WORKSPACE_MCP_TOOLS")
+        _env_tools = os.getenv("WORKSPACE_MCP_TOOLS", "").strip()
         if _env_tools:
             _raw = [t.strip().lower() for t in _env_tools.split(",") if t.strip()]
             _invalid = [t for t in _raw if t not in VALID_SERVICES]
             if _invalid:
                 logger.warning("Ignoring invalid services from WORKSPACE_MCP_TOOLS: %s", _invalid)
             _parsed = [t for t in _raw if t in VALID_SERVICES]
+            if _raw and not _parsed:
+                print("Error: WORKSPACE_MCP_TOOLS contains only invalid services.", file=sys.stderr)
+                sys.exit(1)
             if _parsed:
                 args.tools = _parsed
     if args.tool_tier is None:
         _env_tier = os.getenv("WORKSPACE_MCP_TOOL_TIER", "").strip().lower()
-        if _env_tier in {"core", "extended", "complete"}:
+        if _env_tier:
+            if _env_tier not in {"core", "extended", "complete"}:
+                print(f"Error: invalid WORKSPACE_MCP_TOOL_TIER '{_env_tier}'.", file=sys.stderr)
+                sys.exit(1)
             args.tool_tier = _env_tier
     if not args.read_only:
         _env_ro = os.getenv("WORKSPACE_MCP_READ_ONLY", "").strip().lower()
-        if _env_ro in {"true", "1", "yes"}:
-            args.read_only = True
+        if _env_ro:
+            if _env_ro in {"true", "1", "yes"}:
+                args.read_only = True
+            elif _env_ro not in {"false", "0", "no"}:
+                print(f"Error: invalid WORKSPACE_MCP_READ_ONLY '{_env_ro}'.", file=sys.stderr)
+                sys.exit(1)
     if args.permissions is None:
         _env_perms = os.getenv("WORKSPACE_MCP_PERMISSIONS", "").strip()
         if _env_perms:
             args.permissions = _env_perms.split()
     if args.transport is None:
         _env_transport = os.getenv("WORKSPACE_MCP_TRANSPORT", "").strip().lower()
-        args.transport = _env_transport if _env_transport in {"stdio", "streamable-http"} else "stdio"
+        if _env_transport:
+            if _env_transport not in {"stdio", "streamable-http"}:
+                print(f"Error: invalid WORKSPACE_MCP_TRANSPORT '{_env_transport}'.", file=sys.stderr)
+                sys.exit(1)
+            args.transport = _env_transport
+        else:
+            args.transport = "stdio"
 
     # Validate mutually exclusive flags
     if args.permissions and args.read_only:
@@ -316,21 +346,7 @@ def main():
     safe_print("")
 
     # Import tool modules to register them with the MCP server via decorators.
-    # NOTE: Lambda order must match SERVICE_NAMES order exactly.
-    tool_imports = dict(zip(SERVICE_NAMES, [
-        lambda: import_module("gmail.gmail_tools"),
-        lambda: import_module("gdrive.drive_tools"),
-        lambda: import_module("gcalendar.calendar_tools"),
-        lambda: import_module("gdocs.docs_tools"),
-        lambda: import_module("gsheets.sheets_tools"),
-        lambda: import_module("gchat.chat_tools"),
-        lambda: import_module("gforms.forms_tools"),
-        lambda: import_module("gslides.slides_tools"),
-        lambda: import_module("gtasks.tasks_tools"),
-        lambda: import_module("gcontacts.contacts_tools"),
-        lambda: import_module("gsearch.search_tools"),
-        lambda: import_module("gappsscript.apps_script_tools"),
-    ]))
+    tool_imports = {svc: (lambda m=mod: import_module(m)) for svc, mod in SERVICE_MODULES.items()}
 
     tool_icons = {
         "gmail": "📧",
