@@ -60,7 +60,8 @@
         "WORKSPACE_MCP_TOOL_TIER": "${user_config.tool_tier}",
         "WORKSPACE_MCP_READ_ONLY": "${user_config.read_only}",
         "WORKSPACE_MCP_PERMISSIONS": "${user_config.permissions}",
-        "OAUTHLIB_INSECURE_TRANSPORT": "1"
+        "OAUTHLIB_INSECURE_TRANSPORT": "1",
+        "WORKSPACE_MCP_HTTP_PORT": "8001"
       }
     }
   }
