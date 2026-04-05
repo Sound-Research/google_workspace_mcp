@@ -215,6 +215,12 @@ def main():
 
     # Env var fallbacks for plugin users who configure via userConfig.
     # Non-empty but invalid values fail closed to prevent silent access widening.
+    # Skip env fallbacks for mutually exclusive flags that were set on the CLI
+    # to avoid conflicts (e.g. WORKSPACE_MCP_READ_ONLY=true + --permissions).
+    _cli_has_tools = args.tools is not None
+    _cli_has_permissions = args.permissions is not None
+    _cli_has_read_only = args.read_only
+
     if args.tools is None:
         _env_tools = os.getenv("WORKSPACE_MCP_TOOLS", "").strip()
         if _env_tools:
@@ -235,7 +241,7 @@ def main():
                 print(f"Error: invalid WORKSPACE_MCP_TOOL_TIER '{_env_tier}'.", file=sys.stderr)
                 sys.exit(1)
             args.tool_tier = _env_tier
-    if not args.read_only:
+    if not args.read_only and not _cli_has_permissions:
         _env_ro = os.getenv("WORKSPACE_MCP_READ_ONLY", "").strip().lower()
         if _env_ro:
             if _env_ro in {"true", "1", "yes"}:
@@ -243,7 +249,7 @@ def main():
             elif _env_ro not in {"false", "0", "no"}:
                 print(f"Error: invalid WORKSPACE_MCP_READ_ONLY '{_env_ro}'.", file=sys.stderr)
                 sys.exit(1)
-    if args.permissions is None:
+    if args.permissions is None and not _cli_has_read_only:
         _env_perms = os.getenv("WORKSPACE_MCP_PERMISSIONS", "").strip()
         if _env_perms:
             args.permissions = _env_perms.split()
@@ -581,15 +587,18 @@ def main():
                         logger.warning("Port %d in use, workspace-cli HTTP endpoint unavailable", http_port)
                         http_available = False
 
-                    tasks = [server.run_stdio_async()]
+                    http_srv = None
                     if http_available:
                         app = server.http_app(path="/mcp")
                         config = uvicorn.Config(app, host=host, port=http_port, log_level="warning")
                         http_srv = uvicorn.Server(config)
-                        tasks.append(http_srv.serve())
+                        asyncio.create_task(http_srv.serve())
                         safe_print(f"   workspace-cli endpoint: http://{host}:{http_port}/mcp")
 
-                    await asyncio.gather(*tasks)
+                    await server.run_stdio_async()
+
+                    if http_srv:
+                        http_srv.should_exit = True
 
                 asyncio.run(_run_dual())
             else:
