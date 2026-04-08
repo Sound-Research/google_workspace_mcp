@@ -221,7 +221,10 @@ def _get_service_account_credentials(
                 config.service_account_key_file, scopes=scopes, subject=subject
             )
         service_account_key_json = config.service_account_key_json
-        if not isinstance(service_account_key_json, str) or not service_account_key_json.strip():
+        if (
+            not isinstance(service_account_key_json, str)
+            or not service_account_key_json.strip()
+        ):
             raise GoogleAuthenticationError(
                 "Service account credentials require either service_account_key_file "
                 "or a non-empty service_account_key_json."
