@@ -292,7 +292,7 @@ def main():
             elif _env_ro not in {"false", "0", "no"}:
                 print(f"Error: invalid WORKSPACE_MCP_READ_ONLY '{_env_ro}'.", file=sys.stderr)
                 sys.exit(1)
-    if args.permissions is None and not _cli_has_read_only:
+    if args.permissions is None and not _cli_has_read_only and not _cli_has_tools:
         _env_perms = os.getenv("WORKSPACE_MCP_PERMISSIONS", "").strip()
         if _env_perms:
             args.permissions = _env_perms.split()
@@ -691,17 +691,25 @@ def main():
                         http_available = False
 
                     http_srv = None
+                    http_task = None
                     if http_available:
                         app = server.http_app(path="/mcp")
                         config = uvicorn.Config(app, host=host, port=http_port, log_level="warning")
                         http_srv = uvicorn.Server(config)
-                        asyncio.create_task(http_srv.serve())
+                        http_task = asyncio.create_task(http_srv.serve())
                         safe_print(f"   workspace-cli endpoint: http://{host}:{http_port}/mcp")
 
                     await server.run_stdio_async()
 
                     if http_srv:
                         http_srv.should_exit = True
+                    if http_task:
+                        try:
+                            await asyncio.wait_for(http_task, timeout=5.0)
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            http_task.cancel()
+                        except Exception:
+                            pass  # HTTP errors non-critical in stdio mode
 
                 asyncio.run(_run_dual())
             else:
