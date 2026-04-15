@@ -1,11 +1,6 @@
 """Tests for XSS prevention in OAuth callback HTML responses."""
 
-import os
-import sys
-
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
-from auth.oauth_responses import (  # noqa: E402
+from auth.oauth_responses import (
     create_error_response,
     create_server_error_response,
     create_success_response,
@@ -28,7 +23,7 @@ class TestXSSPrevention:
         assert "&amp;" in body
 
     def test_success_response_escapes_user_display(self):
-        xss_email = '<img src=x onerror=alert(1)>@evil.com'
+        xss_email = "<img src=x onerror=alert(1)>@evil.com"
         response = create_success_response(verified_user_id=xss_email)
         body = response.body.decode()
         # The raw <img> tag should not appear — only the escaped version
@@ -46,7 +41,7 @@ class TestXSSPrevention:
         assert "Google User" in body
 
     def test_server_error_response_escapes_exception(self):
-        xss_detail = 'FileNotFoundError: /secret/path/<script>alert(1)</script>'
+        xss_detail = "FileNotFoundError: /secret/path/<script>alert(1)</script>"
         response = create_server_error_response(xss_detail)
         body = response.body.decode()
         assert "<script>alert" not in body
@@ -59,3 +54,7 @@ class TestXSSPrevention:
     def test_server_error_response_status_code(self):
         response = create_server_error_response("test")
         assert response.status_code == 500
+
+    def test_success_response_status_code(self):
+        response = create_success_response("user@example.com")
+        assert response.status_code == 200
