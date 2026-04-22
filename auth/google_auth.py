@@ -677,20 +677,13 @@ def handle_auth_callback(
             flow.fetch_token(authorization_response=authorization_response)
             credentials = flow.credentials
         except Exception as exc:
-            if not _is_pkce_verifier_not_needed_error(exc):
-                raise
-
-            logger.warning(
-                "OAuth token exchange rejected PKCE verifier; retrying callback without PKCE."
-            )
-            fallback_flow = create_oauth_flow(
-                scopes=scopes,
-                redirect_uri=redirect_uri,
-                state=state,
-                autogenerate_code_verifier=False,
-            )
-            fallback_flow.fetch_token(authorization_response=authorization_response)
-            credentials = fallback_flow.credentials
+            if _is_pkce_verifier_not_needed_error(exc):
+                logger.error(
+                    "OAuth token exchange rejected PKCE verifier. "
+                    "The authorization code has been consumed and cannot be reused. "
+                    "Please restart the authentication flow from the beginning."
+                )
+            raise
         logger.info("Successfully exchanged authorization code for tokens.")
 
         # Handle partial OAuth grants: if the user declined some scopes on
