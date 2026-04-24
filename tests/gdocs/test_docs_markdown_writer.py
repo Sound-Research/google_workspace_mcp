@@ -1,8 +1,12 @@
 """Unit tests for gdocs.docs_markdown_writer."""
 
+import pathlib
+
 import pytest
 
 from gdocs.docs_markdown_writer import markdown_to_docs_requests
+
+FIXTURE_DIR = pathlib.Path(__file__).parent / "fixtures"
 
 
 def test_empty_markdown_returns_empty_list():
@@ -198,3 +202,27 @@ def test_no_tab_id_omits_tab_id_field_entirely():
             assert "tabId" not in r["updateTextStyle"]["range"]
         if "updateParagraphStyle" in r:
             assert "tabId" not in r["updateParagraphStyle"]["range"]
+
+
+def test_real_blog_article_produces_reasonable_request_list():
+    md_path = FIXTURE_DIR / "sample_blog_article.md"
+    md = md_path.read_text()
+    requests = markdown_to_docs_requests(md)
+    # Smoke test - we expect many insertText and several updateParagraphStyle
+    inserts = [r for r in requests if "insertText" in r]
+    heading_styles = [
+        r for r in requests
+        if "updateParagraphStyle" in r
+        and r["updateParagraphStyle"]["paragraphStyle"].get("namedStyleType", "").startswith("HEADING")
+    ]
+    assert len(inserts) >= 10, f"Expected many inserts, got {len(inserts)}"
+    assert len(heading_styles) >= 3, f"Expected several headings, got {len(heading_styles)}"
+
+
+def test_real_blog_article_indices_are_monotonic():
+    md_path = FIXTURE_DIR / "sample_blog_article.md"
+    md = md_path.read_text()
+    requests = markdown_to_docs_requests(md)
+    inserts = [r for r in requests if "insertText" in r]
+    indices = [r["insertText"]["location"]["index"] for r in inserts]
+    assert indices == sorted(indices), "insertText indices must be monotonic non-decreasing"
