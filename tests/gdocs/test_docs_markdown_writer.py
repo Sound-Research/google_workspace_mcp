@@ -58,3 +58,54 @@ def test_h2_h3_h4_h5_h6_all_emit_correct_named_style():
         styles = [r for r in requests if "updateParagraphStyle" in r]
         assert len(styles) == 1
         assert styles[0]["updateParagraphStyle"]["paragraphStyle"]["namedStyleType"] == f"HEADING_{level}"
+
+
+def test_bold_span_emits_update_text_style():
+    requests = markdown_to_docs_requests("This is **bold** text.")
+    inserts = [r for r in requests if "insertText" in r]
+    styles = [r for r in requests if "updateTextStyle" in r]
+    assert len(inserts) == 1
+    assert inserts[0]["insertText"]["text"] == "This is bold text.\n"
+    assert len(styles) == 1
+    ts = styles[0]["updateTextStyle"]
+    assert ts["textStyle"]["bold"] is True
+    rng = ts["range"]
+    assert rng["startIndex"] == 1 + len("This is ")
+    assert rng["endIndex"] == rng["startIndex"] + len("bold")
+
+
+def test_italic_span_emits_italic_style():
+    requests = markdown_to_docs_requests("Some *italic* word.")
+    styles = [r for r in requests if "updateTextStyle" in r]
+    assert len(styles) == 1
+    assert styles[0]["updateTextStyle"]["textStyle"]["italic"] is True
+
+
+def test_inline_code_emits_monospace_style():
+    requests = markdown_to_docs_requests("Use the `foo()` function.")
+    styles = [r for r in requests if "updateTextStyle" in r]
+    assert len(styles) == 1
+    ts = styles[0]["updateTextStyle"]["textStyle"]
+    assert ts.get("weightedFontFamily", {}).get("fontFamily") in (
+        "Courier New",
+        "Roboto Mono",
+        "Consolas",
+    )
+
+
+def test_link_emits_link_style():
+    requests = markdown_to_docs_requests("See [docs](https://example.com) here.")
+    styles = [r for r in requests if "updateTextStyle" in r]
+    assert len(styles) == 1
+    assert styles[0]["updateTextStyle"]["textStyle"]["link"]["url"] == "https://example.com"
+
+
+def test_combined_bold_and_italic_spans():
+    requests = markdown_to_docs_requests("A **bold** and *italic* mix.")
+    styles = [r for r in requests if "updateTextStyle" in r]
+    assert len(styles) == 2
+    style_types = sorted([
+        "bold" if s["updateTextStyle"]["textStyle"].get("bold") else "italic"
+        for s in styles
+    ])
+    assert style_types == ["bold", "italic"]

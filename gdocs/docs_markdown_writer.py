@@ -55,45 +55,144 @@ def _emit_requests(tokens, requests, tab_id, start_index):
         if tok.type == "heading_open":
             level = int(tok.tag[1])  # 'h1' -> 1
             inline_tok = tokens[i + 1]
-            text = _render_inline_plain(inline_tok.children or [])
+            text, inline_styles = _render_inline_with_styles(
+                inline_tok.children or [], cursor[0], tab_id
+            )
             text += "\n"
             range_start = cursor[0]
             requests.append(_build_insert_text(cursor[0], text, tab_id))
             cursor[0] += len(text)
-            range_end = cursor[0]
-            requests.append(
-                _build_heading_style(range_start, range_end, level, tab_id)
-            )
+            requests.append(_build_heading_style(range_start, cursor[0], level, tab_id))
+            requests.extend(inline_styles)
             i += 3
             continue
 
         if tok.type == "paragraph_open":
             # paragraph_open is followed by inline (children), then paragraph_close
             inline_tok = tokens[i + 1]
-            text = _render_inline_plain(inline_tok.children or [])
+            text, inline_styles = _render_inline_with_styles(
+                inline_tok.children or [], cursor[0], tab_id
+            )
             text += "\n"
             requests.append(_build_insert_text(cursor[0], text, tab_id))
             cursor[0] += len(text)
+            requests.extend(inline_styles)
             i += 3  # skip paragraph_open, inline, paragraph_close
             continue
 
         i += 1
 
 
-def _render_inline_plain(children) -> str:
-    """Render inline tokens as plain text, ignoring styling for now.
+def _render_inline_with_styles(
+    children,
+    base_index: int,
+    tab_id: Optional[str],
+) -> tuple[str, list[dict]]:
+    """Walk inline tokens, returning plain text and style requests.
 
-    Tasks 7+ expand this to handle bold, italic, code, links.
+    Args:
+        children - inline tokens from markdown-it
+        base_index - the document index where this inline block starts
+        tab_id - optional tab ID for ranges
+
+    Returns:
+        (plain_text, style_requests). The caller emits insertText with
+        plain_text starting at base_index, then appends the style_requests.
     """
-    out = []
-    for child in children:
-        if child.type == "text":
-            out.append(child.content)
-        elif child.type == "softbreak":
-            out.append(" ")
-        elif child.type == "hardbreak":
-            out.append("\n")
-    return "".join(out)
+    text_parts: list[str] = []
+    style_requests: list[dict] = []
+    local_pos = 0  # position within this inline block (0-based)
+    # Stack entries are tuples. For strong/em: (style_name, start_local_pos).
+    # For link: (style_name, start_local_pos, href).
+    stack: list[tuple] = []
+
+    for tok in children:
+        if tok.type == "text":
+            text_parts.append(tok.content)
+            local_pos += len(tok.content)
+        elif tok.type == "softbreak":
+            text_parts.append(" ")
+            local_pos += 1
+        elif tok.type == "hardbreak":
+            text_parts.append("\n")
+            local_pos += 1
+        elif tok.type == "code_inline":
+            # self-contained - emit style immediately
+            start_local = local_pos
+            text_parts.append(tok.content)
+            local_pos += len(tok.content)
+            style_requests.append(
+                _build_text_style(
+                    base_index + start_local,
+                    base_index + local_pos,
+                    {"weightedFontFamily": {"fontFamily": "Courier New", "weight": 400}},
+                    "weightedFontFamily",
+                    tab_id,
+                )
+            )
+        elif tok.type in ("strong_open", "em_open"):
+            stack.append((tok.type, local_pos))
+        elif tok.type in ("strong_close", "em_close"):
+            opener_type = tok.type.replace("_close", "_open")
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx][0] == opener_type:
+                    _, start_local = stack.pop(idx)
+                    style_key = "bold" if opener_type == "strong_open" else "italic"
+                    style_requests.append(
+                        _build_text_style(
+                            base_index + start_local,
+                            base_index + local_pos,
+                            {style_key: True},
+                            style_key,
+                            tab_id,
+                        )
+                    )
+                    break
+        elif tok.type == "link_open":
+            # tok.attrs may be a dict (newer markdown-it-py) or list of [key, val]
+            # pairs (older). Support both.
+            attrs = tok.attrs
+            if isinstance(attrs, dict):
+                href = attrs.get("href")
+            else:
+                href = next((a[1] for a in attrs if a[0] == "href"), None)
+            stack.append(("link_open", local_pos, href))
+        elif tok.type == "link_close":
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx][0] == "link_open":
+                    _, start_local, href = stack.pop(idx)
+                    style_requests.append(
+                        _build_text_style(
+                            base_index + start_local,
+                            base_index + local_pos,
+                            {"link": {"url": href}},
+                            "link",
+                            tab_id,
+                        )
+                    )
+                    break
+
+    return "".join(text_parts), style_requests
+
+
+def _build_text_style(
+    start: int,
+    end: int,
+    style: dict,
+    fields: str,
+    tab_id: Optional[str],
+) -> dict:
+    """Build an updateTextStyle request."""
+    rng = {"startIndex": start, "endIndex": end}
+    if tab_id:
+        rng["tabId"] = tab_id
+    return {
+        "updateTextStyle": {
+            "range": rng,
+            "textStyle": style,
+            "fields": fields,
+        }
+    }
 
 
 def _build_insert_text(index: int, text: str, tab_id: Optional[str]) -> dict:
