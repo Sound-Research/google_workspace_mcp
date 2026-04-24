@@ -76,23 +76,22 @@ class TestPathTraversal:
     """user_email must be sanitized before use in file paths."""
 
     def test_traversal_chars_sanitized(self, cred_store):
-        """Path separators and traversal sequences are replaced with underscores."""
+        """Path separators and traversal sequences are percent-encoded."""
         path = cred_store._get_credential_path("../../etc/evil@gmail.com")
         filename = os.path.basename(path)
-        # Dots are kept (valid in emails), slashes become underscores
-        assert filename == ".._.._etc_evil@gmail.com.json"
+        assert filename == "..%2F..%2Fetc%2Fevil@gmail.com.json"
 
     def test_slash_in_email_sanitized(self, cred_store):
-        """Forward slashes in email are replaced."""
+        """Forward slashes in email are percent-encoded."""
         path = cred_store._get_credential_path("user/admin@gmail.com")
         filename = os.path.basename(path)
-        assert filename == "user_admin@gmail.com.json"
+        assert filename == "user%2Fadmin@gmail.com.json"
 
     def test_backslash_in_email_sanitized(self, cred_store):
-        """Backslashes in email are replaced."""
+        """Backslashes in email are percent-encoded."""
         path = cred_store._get_credential_path("user\\admin@gmail.com")
         filename = os.path.basename(path)
-        assert filename == "user_admin@gmail.com.json"
+        assert filename == "user%5Cadmin@gmail.com.json"
 
     def test_resolved_path_under_base_dir(self, cred_store):
         """Resolved path must remain within base_dir."""
@@ -114,8 +113,32 @@ class TestPathTraversal:
         assert filename == "first.last-name@my-domain.co.uk.json"
 
     def test_null_bytes_sanitized(self, cred_store):
-        """Null bytes in email are replaced."""
+        """Null bytes in email are percent-encoded."""
         path = cred_store._get_credential_path("user\x00@gmail.com")
         filename = os.path.basename(path)
         assert "\x00" not in filename
-        assert filename == "user_@gmail.com.json"
+        assert filename == "user%00@gmail.com.json"
+
+    def test_plus_sign_prevents_collision(self, cred_store):
+        """Distinct emails must not collapse to the same filename."""
+        path1 = cred_store._get_credential_path("user+admin@example.com")
+        path2 = cred_store._get_credential_path("user_admin@example.com")
+
+        assert os.path.basename(path1) == "user%2Badmin@example.com.json"
+        assert os.path.basename(path2) == "user_admin@example.com.json"
+        assert path1 != path2
+
+    def test_list_users_decodes_percent_encoded_email(self, cred_store):
+        """User enumeration returns the original email, not the encoded key."""
+        mock_creds = MagicMock()
+        mock_creds.token = "tok"
+        mock_creds.refresh_token = "rtok"
+        mock_creds.token_uri = "https://oauth2.googleapis.com/token"
+        mock_creds.client_id = "cid"
+        mock_creds.client_secret = "csec"
+        mock_creds.scopes = ["openid"]
+        mock_creds.expiry = None
+
+        cred_store.store_credential("user+admin@example.com", mock_creds)
+
+        assert cred_store.list_users() == ["user+admin@example.com"]

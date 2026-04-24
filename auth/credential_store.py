@@ -5,13 +5,14 @@ This module provides a standardized interface for credential storage and retriev
 supporting multiple backends configurable via environment variables.
 """
 
-import os
-import re
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Optional, List
 from datetime import datetime
+from typing import List, Optional
+from urllib.parse import quote, unquote
+
 from google.cloud import storage
 from google.cloud.exceptions import NotFound, PreconditionFailed
 from google.oauth2.credentials import Credentials
@@ -121,15 +122,15 @@ class LocalDirectoryCredentialStore(CredentialStore):
     def _get_credential_path(self, user_email: str) -> str:
         """Get the file path for a user's credentials.
 
-        Sanitizes user_email to prevent path traversal and validates the
-        resolved path stays within base_dir.
+        URL-encodes user_email to prevent path traversal while preserving a
+        collision-free mapping from email address to filename. The resolved
+        path is validated to remain under base_dir.
         """
         if not os.path.exists(self.base_dir):
             os.makedirs(self.base_dir, mode=0o700, exist_ok=True)
             logger.info(f"Created credentials directory: {self.base_dir}")
 
-        # Sanitize email to prevent path traversal
-        safe_email = re.sub(r"[^a-zA-Z0-9@._-]", "_", user_email)
+        safe_email = quote(user_email, safe="@._-")
         creds_path = os.path.join(self.base_dir, f"{safe_email}.json")
 
         # Verify resolved path is still under base_dir
@@ -238,8 +239,13 @@ class LocalDirectoryCredentialStore(CredentialStore):
         try:
             for filename in os.listdir(self.base_dir):
                 if filename.endswith(".json"):
-                    user_email = filename[:-5]  # Remove .json extension
-                    if user_email in non_credential_files or "@" not in user_email:
+                    encoded_user_email = filename[:-5]  # Remove .json extension
+                    user_email = unquote(encoded_user_email)
+                    if (
+                        encoded_user_email in non_credential_files
+                        or user_email in non_credential_files
+                        or "@" not in user_email
+                    ):
                         continue
                     users.append(user_email)
             logger.debug(
@@ -295,8 +301,8 @@ class GCSCredentialStore(CredentialStore):
             )
         self.bucket_name = bucket_name
 
-        prefix = prefix if prefix is not None else os.getenv(
-            "WORKSPACE_MCP_GCS_PREFIX", ""
+        prefix = (
+            prefix if prefix is not None else os.getenv("WORKSPACE_MCP_GCS_PREFIX", "")
         )
         self.prefix = prefix.strip("/")
         if self.prefix:
@@ -339,8 +345,8 @@ class GCSCredentialStore(CredentialStore):
         )
 
     def _blob_name(self, user_email: str) -> str:
-        """Construct the object key for a user, sanitising email for safety."""
-        safe_email = re.sub(r"[^a-zA-Z0-9@._-]", "_", user_email)
+        """Construct the object key for a user, URL-encoding to prevent collisions."""
+        safe_email = quote(user_email, safe="@._-")
         return f"{self.prefix}{safe_email}{self.FILE_EXTENSION}"
 
     def get_credential(self, user_email: str) -> Optional[Credentials]:
@@ -502,6 +508,16 @@ def get_credential_store() -> CredentialStore:
             or "local_directory"
         )
         if backend == "gcs":
+            # GCS backend does not support list_users(), which is required for
+            # single-user mode. Reject unless OAuth 2.1 is enabled.
+            oauth21_enabled = os.getenv("MCP_ENABLE_OAUTH21", "false").lower() == "true"
+            if not oauth21_enabled:
+                raise ValueError(
+                    "GCSCredentialStore requires MCP_ENABLE_OAUTH21=true. "
+                    "The GCS backend does not support list_users(), which is "
+                    "required for single-user mode. Use LocalDirectoryCredentialStore "
+                    "for single-user deployments, or enable OAuth 2.1 mode."
+                )
             _credential_store = GCSCredentialStore()
         elif backend == "local_directory":
             _credential_store = LocalDirectoryCredentialStore()

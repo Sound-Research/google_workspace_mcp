@@ -110,9 +110,7 @@ class TestRoundTrip:
         assert cred_store.delete_credential("user@example.com") is True
         blob.delete.assert_called_once()
 
-    def test_delete_missing_user_is_idempotent(
-        self, cred_store, mock_storage_client
-    ):
+    def test_delete_missing_user_is_idempotent(self, cred_store, mock_storage_client):
         blob = MagicMock()
         blob.delete.side_effect = NotFound("already gone")
         mock_storage_client.blob.return_value = blob
@@ -229,22 +227,30 @@ class TestConfiguration:
 
 
 class TestPathSanitisation:
-    """Email sanitisation prevents weird object names / injection."""
+    """Email URL-encoding prevents collisions and path traversal."""
 
-    def test_traversal_chars_sanitised(self, cred_store):
+    def test_traversal_chars_encoded(self, cred_store):
         assert (
             cred_store._blob_name("../../etc/evil@gmail.com")
-            == ".._.._etc_evil@gmail.com.json"
+            == "..%2F..%2Fetc%2Fevil@gmail.com.json"
         )
 
-    def test_slash_sanitised(self, cred_store):
+    def test_slash_encoded(self, cred_store):
         assert (
             cred_store._blob_name("user/admin@gmail.com")
-            == "user_admin@gmail.com.json"
+            == "user%2Fadmin@gmail.com.json"
         )
 
     def test_normal_email_unchanged(self, cred_store):
         assert cred_store._blob_name("alice@example.com") == "alice@example.com.json"
+
+    def test_plus_sign_prevents_collision(self, cred_store):
+        """Verify that user+admin@example.com and user_admin@example.com don't collide."""
+        blob1 = cred_store._blob_name("user+admin@example.com")
+        blob2 = cred_store._blob_name("user_admin@example.com")
+        assert blob1 == "user%2Badmin@example.com.json"
+        assert blob2 == "user_admin@example.com.json"
+        assert blob1 != blob2, "Different users must not map to the same blob"
 
 
 class TestBackendSelection:
@@ -264,8 +270,17 @@ class TestBackendSelection:
     def test_gcs_backend_selected(self, monkeypatch, mock_storage_client):
         monkeypatch.setenv("WORKSPACE_MCP_CREDENTIAL_STORE_BACKEND", "gcs")
         monkeypatch.setenv("WORKSPACE_MCP_GCS_BUCKET", "test-bucket")
+        monkeypatch.setenv("MCP_ENABLE_OAUTH21", "true")
         monkeypatch.delenv("WORKSPACE_MCP_GCS_REQUIRE_CMEK", raising=False)
         assert isinstance(get_credential_store(), GCSCredentialStore)
+
+    def test_gcs_backend_requires_oauth21(self, monkeypatch, mock_storage_client):
+        """GCS backend must reject single-user mode (no OAuth 2.1) since list_users() is not supported."""
+        monkeypatch.setenv("WORKSPACE_MCP_CREDENTIAL_STORE_BACKEND", "gcs")
+        monkeypatch.setenv("WORKSPACE_MCP_GCS_BUCKET", "test-bucket")
+        monkeypatch.delenv("MCP_ENABLE_OAUTH21", raising=False)
+        with pytest.raises(ValueError, match="MCP_ENABLE_OAUTH21=true"):
+            get_credential_store()
 
     def test_unknown_backend_raises(self, monkeypatch, tmp_path):
         """Typos/invalid values must not silently fall back — they raise."""
@@ -280,10 +295,13 @@ class TestBackendSelection:
         monkeypatch.setenv("WORKSPACE_MCP_CREDENTIALS_DIR", str(tmp_path))
         assert isinstance(get_credential_store(), LocalDirectoryCredentialStore)
 
-    def test_whitespace_around_backend_is_stripped(self, monkeypatch, mock_storage_client):
+    def test_whitespace_around_backend_is_stripped(
+        self, monkeypatch, mock_storage_client
+    ):
         """Trailing whitespace on the env var doesn't cause a misclassification."""
         monkeypatch.setenv("WORKSPACE_MCP_CREDENTIAL_STORE_BACKEND", "  gcs  ")
         monkeypatch.setenv("WORKSPACE_MCP_GCS_BUCKET", "test-bucket")
+        monkeypatch.setenv("MCP_ENABLE_OAUTH21", "true")
         monkeypatch.delenv("WORKSPACE_MCP_GCS_REQUIRE_CMEK", raising=False)
         assert isinstance(get_credential_store(), GCSCredentialStore)
 
@@ -295,11 +313,15 @@ class TestParseBoolEnv:
     a flag like WORKSPACE_MCP_GCS_REQUIRE_CMEK.
     """
 
-    @pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", " true ", "Yes"])
+    @pytest.mark.parametrize(
+        "value", ["1", "true", "TRUE", "yes", "on", " true ", "Yes"]
+    )
     def test_truthy_values(self, value):
         assert _parse_bool_env(value) is True
 
-    @pytest.mark.parametrize("value", ["0", "false", "FALSE", "no", "off", "", " ", None])
+    @pytest.mark.parametrize(
+        "value", ["0", "false", "FALSE", "no", "off", "", " ", None]
+    )
     def test_falsy_values(self, value):
         assert _parse_bool_env(value) is False
 
