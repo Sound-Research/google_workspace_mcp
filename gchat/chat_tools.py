@@ -136,7 +136,7 @@ def _extract_rich_links(msg: dict) -> List[str]:
 
 
 @server.tool(
-    title='List Spaces',
+    title="List Spaces",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -188,7 +188,7 @@ async def list_spaces(
 
 
 @server.tool(
-    title='Get Messages',
+    title="Get Messages",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -312,7 +312,7 @@ async def get_messages(
 
 
 @server.tool(
-    title='Send Message',
+    title="Send Message",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -369,7 +369,7 @@ async def send_message(
 
 
 @server.tool(
-    title='Search Messages',
+    title="Search Messages",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -556,7 +556,7 @@ async def search_messages(
 
 
 @server.tool(
-    title='Create Reaction',
+    title="Create Reaction",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -600,11 +600,11 @@ async def create_reaction(
 
 
 @server.tool(
-    title='Download Chat Attachment',
+    title="Download Chat Attachment",
     annotations=ToolAnnotations(
-        readOnlyHint=False,
+        readOnlyHint=True,
         destructiveHint=False,
-        idempotentHint=False,
+        idempotentHint=True,
         openWorldHint=True,
     ),
 )

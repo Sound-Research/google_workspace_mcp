@@ -1223,7 +1223,7 @@ def _format_gmail_results_plain(
 
 
 @server.tool(
-    title='Search Gmail Messages',
+    title="Search Gmail Messages",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -1295,7 +1295,7 @@ async def search_gmail_messages(
 
 
 @server.tool(
-    title='Get Gmail Message Content',
+    title="Get Gmail Message Content",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -1416,7 +1416,7 @@ async def get_gmail_message_content(
 
 
 @server.tool(
-    title='Get Gmail Messages Content Batch',
+    title="Get Gmail Messages Content Batch",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -1592,11 +1592,11 @@ async def get_gmail_messages_content_batch(
 
 
 @server.tool(
-    title='Get Gmail Attachment Content',
+    title="Get Gmail Attachment Content",
     annotations=ToolAnnotations(
-        readOnlyHint=False,
+        readOnlyHint=True,
         destructiveHint=False,
-        idempotentHint=False,
+        idempotentHint=True,
         openWorldHint=True,
     ),
 )
@@ -1779,7 +1779,7 @@ async def get_gmail_attachment_content(
 
 
 @server.tool(
-    title='Send Gmail Message',
+    title="Send Gmail Message",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -1996,7 +1996,7 @@ async def send_gmail_message(
 
 
 @server.tool(
-    title='Draft Gmail Message',
+    title="Draft Gmail Message",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -2371,7 +2371,7 @@ def _format_thread_content(
 
 
 @server.tool(
-    title='Get Gmail Thread Content',
+    title="Get Gmail Thread Content",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -2440,7 +2440,7 @@ async def get_gmail_thread_content(
 
 
 @server.tool(
-    title='Get Gmail Threads Content Batch',
+    title="Get Gmail Threads Content Batch",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -2592,7 +2592,7 @@ async def get_gmail_threads_content_batch(
 
 
 @server.tool(
-    title='List Gmail Labels',
+    title="List Gmail Labels",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -2648,7 +2648,7 @@ async def list_gmail_labels(service, user_google_email: str) -> str:
 
 
 @server.tool(
-    title='Manage Gmail Label',
+    title="Manage Gmail Label",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,
@@ -2735,7 +2735,7 @@ async def manage_gmail_label(
 
 
 @server.tool(
-    title='List Gmail Filters',
+    title="List Gmail Filters",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -2821,7 +2821,7 @@ async def list_gmail_filters(service, user_google_email: str) -> str:
 
 
 @server.tool(
-    title='Manage Gmail Filter',
+    title="Manage Gmail Filter",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,
@@ -2898,7 +2898,7 @@ async def manage_gmail_filter(
 
 
 @server.tool(
-    title='Modify Gmail Message Labels',
+    title="Modify Gmail Message Labels",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,
@@ -2964,7 +2964,7 @@ async def modify_gmail_message_labels(
 
 
 @server.tool(
-    title='Batch Modify Gmail Message Labels',
+    title="Batch Modify Gmail Message Labels",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,

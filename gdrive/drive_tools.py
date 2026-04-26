@@ -129,7 +129,7 @@ async def _get_file_size(file_obj: BinaryIO) -> int:
 
 
 @server.tool(
-    title='Search Drive Files',
+    title="Search Drive Files",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -247,7 +247,7 @@ async def search_drive_files(
 
 
 @server.tool(
-    title='Get Drive File Content',
+    title="Get Drive File Content",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -365,11 +365,11 @@ async def get_drive_file_content(
 
 
 @server.tool(
-    title='Get Drive File Download URL',
+    title="Get Drive File Download URL",
     annotations=ToolAnnotations(
-        readOnlyHint=False,
+        readOnlyHint=True,
         destructiveHint=False,
-        idempotentHint=False,
+        idempotentHint=True,
         openWorldHint=True,
     ),
 )
@@ -562,7 +562,7 @@ async def get_drive_file_download_url(
 
 
 @server.tool(
-    title='List Drive Items',
+    title="List Drive Items",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -693,7 +693,7 @@ async def _create_drive_folder_impl(
 
 
 @server.tool(
-    title='Create Drive Folder',
+    title="Create Drive Folder",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -730,7 +730,7 @@ async def create_drive_folder(
 
 
 @server.tool(
-    title='Create Drive File',
+    title="Create Drive File",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -1002,7 +1002,7 @@ def _detect_source_format(file_name: str, content: Optional[str] = None) -> str:
 
 
 @server.tool(
-    title='Import to Google Doc',
+    title="Import to Google Doc",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -1241,7 +1241,7 @@ async def import_to_google_doc(
 
 
 @server.tool(
-    title='Get Drive File Permissions',
+    title="Get Drive File Permissions",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -1358,7 +1358,7 @@ async def get_drive_file_permissions(
 
 
 @server.tool(
-    title='Check Drive File Public Access',
+    title="Check Drive File Public Access",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -1463,7 +1463,7 @@ async def check_drive_file_public_access(
 
 
 @server.tool(
-    title='Update Drive File',
+    title="Update Drive File",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,
@@ -1648,7 +1648,7 @@ async def update_drive_file(
 
 
 @server.tool(
-    title='Get Drive Shareable Link',
+    title="Get Drive Shareable Link",
     annotations=ToolAnnotations(
         readOnlyHint=True,
         destructiveHint=False,
@@ -1716,7 +1716,7 @@ async def get_drive_shareable_link(
 
 
 @server.tool(
-    title='Manage Drive Access',
+    title="Manage Drive Access",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,
@@ -2091,7 +2091,7 @@ async def manage_drive_access(
 
 
 @server.tool(
-    title='Copy Drive File',
+    title="Copy Drive File",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=False,
@@ -2171,7 +2171,7 @@ async def copy_drive_file(
 
 
 @server.tool(
-    title='Set Drive File Permissions',
+    title="Set Drive File Permissions",
     annotations=ToolAnnotations(
         readOnlyHint=False,
         destructiveHint=True,
