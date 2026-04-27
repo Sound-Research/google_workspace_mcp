@@ -16,12 +16,13 @@ from pathlib import Path
 from typing import Annotated, Optional, List, Dict, Literal, Any
 from urllib.parse import unquote, urlparse, urlunsplit
 
-import httpx
 from collections import Counter
 from datetime import datetime, timezone
 from email.message import EmailMessage
 from email.policy import SMTP
 from email.utils import formataddr, getaddresses, parseaddr, parsedate_to_datetime
+
+import httpx
 
 from pydantic import Field
 from googleapiclient.errors import HttpError
@@ -2457,31 +2458,9 @@ async def get_gmail_thread_content(
         str: When `include_analysis=False` (default). The complete thread
         content with all messages formatted for reading.
 
-        Dict[str, Any]: When `include_analysis=True`. A dict with two keys:
-            "content" (str): Same formatted string as when the flag is False.
-            "analysis" (dict): Structured ownership metadata with keys
-                `thread_id`, `thread_subject`, `last_sender` (raw From header,
-                e.g. `"Alex Smith" <alex@example.com>`), `last_sender_email`
-                (normalized form of last_sender, safe to index into
-                `message_count_by_sender`), `last_timestamp` (ISO-8601,
-                UTC-aware), `ball_in_court_of`, `message_count_by_sender`
-                (normalized-email → int), `participants` (sorted list of
-                normalized emails), `excluded_drafts` (int), `message_count`
-                (int).
-
-                `ball_in_court_of` values name WHOSE COURT the ball is in:
-                  "user"  = authenticated user owes the next reply (external
-                            party sent last)
-                  "them"  = other party owes the next reply (user sent last)
-                  None    = unresolvable (all drafts, self-only thread, or
-                            malformed From header)
-
-        Ownership analysis details: plus-addressing is normalized
-        (alex+foo@domain.com is treated as alex@domain.com); drafts are
-        excluded from the last-message determination; malformed Date headers
-        fall back to Gmail's internalDate. See `_analyze_thread_ownership_impl`
-        for full semantics. Known limitation: `user_google_email` is a single
-        address; aliases are not tracked.
+        Dict[str, Any]: When `include_analysis=True`. A dict with keys
+            "content" (str) and "analysis" (dict). See
+            `_analyze_thread_ownership_impl` for the analysis schema.
     """
     logger.info(
         f"[get_gmail_thread_content] Invoked. Thread ID: '{thread_id}', "
@@ -2537,28 +2516,16 @@ def _normalize_email(address: str) -> str:
 def _parse_date_header(
     date_str: str, internal_date_ms: str | int | None
 ) -> tuple[Optional[str], Optional[datetime]]:
-    """Parse a Date header to a timezone-aware datetime. Fall back to
-    internalDate (Unix ms as string) when the RFC822 Date header is malformed
-    or missing.
-
-    CRITICAL: the returned datetime is ALWAYS timezone-aware (UTC). Mixing
-    naive and aware datetimes in comparisons raises TypeError at runtime,
-    which matters here because a single thread can contain both well-formed
-    Date headers (with tz) and malformed ones (falling back to internalDate,
-    which is aware UTC). Coerce naive → UTC at parse time so downstream
-    callers can `>` / `<` the results freely.
+    """Parse a Date header to a UTC-aware datetime, falling back to
+    internalDate (Unix ms) when malformed. Always returns UTC-aware datetimes
+    so naive/aware comparisons don't raise TypeError.
 
     Returns (iso_string, datetime) or (None, None) if both sources fail.
     """
     if date_str:
         try:
             dt = parsedate_to_datetime(date_str)
-            # parsedate_to_datetime returns a naive datetime when the header
-            # has no timezone offset (e.g., "Mon, 14 Apr 2026 09:00:00"),
-            # otherwise an aware datetime with the header's offset (e.g.,
-            # -0400). Normalize to UTC either way so the returned isoformat
-            # string always carries a UTC offset, matching the documented
-            # "ALWAYS UTC-aware" contract.
+            # Normalize to UTC (parsedate_to_datetime may return naive or offset-aware).
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
             else:
@@ -2639,21 +2606,13 @@ def _analyze_thread_ownership_impl(
         _name, from_email = parseaddr(from_addr)
         from_norm = _normalize_email(from_email) if from_email else ""
 
-        # Count participants from From/To/Cc (normalized). Use getaddresses
-        # for RFC-correct parsing — a naive `split(",")` would mis-parse
-        # quoted display names with embedded commas like:
-        #   "Doe, John" <john@example.com>, vendor@example.com
-        # getaddresses handles all three headers in one pass and returns
-        # (display_name, address) tuples.
+        # Collect participants from From/To/Cc using getaddresses (RFC-correct
+        # parsing of quoted display names with embedded commas).
         header_values = [
             headers.get(hdr, "") for hdr in ("From", "To", "Cc")
         ]
         for _n, addr in getaddresses([v for v in header_values if v]):
             norm = _normalize_email(addr) if addr else ""
-            # `_normalize_email` returns the input unchanged when there's no
-            # "@", so a malformed header like "No Email Here" would otherwise
-            # leak a free-text token into participants. Gate on "@" presence
-            # so the structured payload only contains real email addresses.
             if norm and "@" in norm:
                 participants.add(norm)
 
@@ -2661,8 +2620,6 @@ def _analyze_thread_ownership_impl(
             excluded_drafts += 1
             continue
 
-        # Same "@"-presence guard on the sender counter — a malformed From
-        # header shouldn't create a phantom sender entry.
         if from_norm and "@" in from_norm:
             sender_counter[from_norm] += 1
 
@@ -2671,11 +2628,6 @@ def _analyze_thread_ownership_impl(
         )
         if dt is not None:
             if last_non_draft is None or dt >= last_non_draft[0]:
-                # >= rather than > so that, on identical timestamps, the
-                # later-iterated message wins. Gmail returns thread messages
-                # in chronological order, so later-in-list == later-in-time
-                # when the parsed datetimes tie (e.g., both fall back to the
-                # same internalDate second).
                 last_non_draft = (dt, message, headers)
 
     if last_non_draft is None:
@@ -2698,32 +2650,13 @@ def _analyze_thread_ownership_impl(
     _n, last_sender_email = parseaddr(last_sender_raw)
     last_sender_norm = _normalize_email(last_sender_email) if last_sender_email else ""
 
-    # Ball-in-court logic — the value names WHOSE COURT the ball is in:
-    # - "user" = ball is in the authenticated user's court (someone ELSE
-    #   sent last, so user owes the next reply)
-    # - "them" = ball is in the other party's court (user sent last, so
-    #   they owe the next reply)
-    # - None  = unresolvable (self-only thread with no external party, or
-    #           malformed From header, or normalized_user empty)
-    #
-    # Compute the external-party check from sender_counter (which is already
-    # draft-filtered) rather than from `participants`. `participants`
-    # intentionally includes draft recipients for the downstream payload
-    # (users want to see the full address set, drafts included), but for
-    # ball-in-court we only care about parties who have actually sent. A
-    # thread with only (user → self non-draft) + (user → external draft)
-    # should resolve as a self-only thread, not as "ball is on them".
+    # Ball-in-court: "user" = user owes reply, "them" = other party owes reply,
+    # None = unresolvable. Uses sender_counter (draft-filtered) not participants.
     sender_parties = set(sender_counter.keys())
     external_senders = sender_parties - {normalized_user} if normalized_user else sender_parties
     if not normalized_user or "@" not in last_sender_norm:
-        # Either we have no user identity to compare against, or the last
-        # message's From header couldn't be parsed into a real email address
-        # (e.g., just a display name). Can't make a reliable claim.
         ball_in_court_of = None
     elif not external_senders:
-        # Self-only thread (user → user, e.g., forward-to-self): no external
-        # party has SENT anything non-draft. Even if a draft names an
-        # external recipient, the ball isn't meaningfully on them.
         ball_in_court_of = None
     elif last_sender_norm == normalized_user:
         ball_in_court_of = "them"
@@ -2734,9 +2667,6 @@ def _analyze_thread_ownership_impl(
         "thread_id": thread_id,
         "thread_subject": thread_subject,
         "last_sender": last_sender_raw or None,
-        # Normalized form of last_sender, safe to index into
-        # message_count_by_sender and participants. Useful for programmatic
-        # consumers doing e.g. analysis["message_count_by_sender"][analysis["last_sender_email"]].
         "last_sender_email": last_sender_norm or None,
         "last_timestamp": last_dt.isoformat(),
         "ball_in_court_of": ball_in_court_of,
