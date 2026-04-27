@@ -752,10 +752,16 @@ def main():
                         if http_task:
                             try:
                                 await asyncio.wait_for(http_task, timeout=5.0)
-                            except (asyncio.TimeoutError, asyncio.CancelledError):
-                                http_task.cancel()
-                            except Exception:
-                                pass  # HTTP errors non-critical in stdio mode
+                            except asyncio.TimeoutError:
+                                # wait_for already cancelled the task; drain it.
+                                try:
+                                    await http_task
+                                except (asyncio.CancelledError, Exception):
+                                    pass
+                            except asyncio.CancelledError:
+                                pass
+                            except Exception as exc:
+                                logger.debug("HTTP sidecar ended with exception: %s", exc)
 
                 asyncio.run(_run_dual())
             else:
