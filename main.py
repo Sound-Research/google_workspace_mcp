@@ -721,12 +721,16 @@ def main():
                     print(f"Error: invalid WORKSPACE_MCP_HTTP_PORT '{_cli_port}'.", file=sys.stderr)
                     sys.exit(1)
 
+                # Bind sidecar to loopback only — auth provider is not initialized
+                # in stdio mode, so exposing this on 0.0.0.0 would allow unauthenticated access.
+                http_host = "127.0.0.1"
+
                 async def _run_dual() -> None:
                     """Run stdio and HTTP transports concurrently."""
                     http_available = True
                     try:
                         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                            s.bind((host, http_port))
+                            s.bind((http_host, http_port))
                     except OSError:
                         logger.warning("Port %d in use, workspace-cli HTTP endpoint unavailable", http_port)
                         http_available = False
@@ -735,10 +739,10 @@ def main():
                     http_task = None
                     if http_available:
                         app = server.http_app(path="/mcp")
-                        config = uvicorn.Config(app, host=host, port=http_port, log_level="warning")
+                        config = uvicorn.Config(app, host=http_host, port=http_port, log_level="warning")
                         http_srv = uvicorn.Server(config)
                         http_task = asyncio.create_task(http_srv.serve())
-                        safe_print(f"   workspace-cli endpoint: http://{host}:{http_port}/mcp")
+                        safe_print(f"   workspace-cli endpoint: http://{http_host}:{http_port}/mcp")
 
                     try:
                         await server.run_stdio_async()
