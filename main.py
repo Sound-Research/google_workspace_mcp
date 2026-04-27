@@ -767,7 +767,7 @@ def main():
                             except asyncio.CancelledError:
                                 raise
                             except Exception as exc:
-                                logger.debug("HTTP sidecar ended with exception: %s", exc)
+                                logger.warning("HTTP sidecar ended with exception: %s", exc)
 
                 asyncio.run(_run_dual())
             else:
