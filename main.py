@@ -690,6 +690,12 @@ def main():
         safe_print("✅ Ready for MCP connections")
         safe_print("")
 
+        if args.transport == "streamable-http" and os.getenv("WORKSPACE_MCP_HTTP_PORT", "").strip():
+            logger.warning(
+                "WORKSPACE_MCP_HTTP_PORT is ignored when transport is 'streamable-http'; "
+                "the primary server already serves HTTP on WORKSPACE_MCP_PORT/PORT."
+            )
+
         if args.transport == "streamable-http":
             # Check port availability before starting HTTP server
             try:
