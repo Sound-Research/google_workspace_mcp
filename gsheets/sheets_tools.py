@@ -2212,7 +2212,15 @@ async def resize_sheet_dimensions(
     )
 
 
-@server.tool()
+@server.tool(
+    title="Move Sheet Rows",
+    annotations=ToolAnnotations(
+        readOnlyHint=False,
+        destructiveHint=True,
+        idempotentHint=False,
+        openWorldHint=True,
+    ),
+)
 @handle_http_errors("move_sheet_rows", service_type="sheets")
 @require_google_service("sheets", "sheets_write")
 async def move_sheet_rows(
