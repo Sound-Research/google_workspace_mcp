@@ -1,7 +1,6 @@
 {
   "name": "google-workspace-mcp",
   "description": "Complete Google Workspace integration -- Gmail, Drive, Calendar, Docs, Sheets, Slides, Forms, Tasks, Contacts, Chat, Apps Script, and Custom Search via MCP with workflow guidance.",
-  "version": "1.20.0",
   "author": {
     "name": "taylorwilsdon"
   },
@@ -47,6 +46,14 @@
       "type": "string",
       "sensitive": false,
       "required": false
+    },
+    "http_port": {
+      "title": "workspace-cli HTTP sidecar port",
+      "description": "Advanced legacy-stdio bridge for local workspace-cli use. Leave empty for recommended streamable HTTP/OAuth 2.1 deployments. When enabled, the endpoint binds to 127.0.0.1 only but is accessible to local processes.",
+      "type": "string",
+      "sensitive": false,
+      "required": false,
+      "default": ""
     }
   },
   "mcpServers": {
@@ -61,7 +68,7 @@
         "WORKSPACE_MCP_READ_ONLY": "${user_config.read_only}",
         "WORKSPACE_MCP_PERMISSIONS": "${user_config.permissions}",
         "OAUTHLIB_INSECURE_TRANSPORT": "1",
-        "WORKSPACE_MCP_HTTP_PORT": "8001"
+        "WORKSPACE_MCP_HTTP_PORT": "${user_config.http_port}"
       }
     }
   }
