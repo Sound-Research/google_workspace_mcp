@@ -1260,23 +1260,79 @@ async def create_sheet(
     user_google_email: str,
     spreadsheet_id: str,
     sheet_name: str,
+    source_sheet_name: Optional[str] = None,
+    insert_sheet_index: Optional[int] = None,
 ) -> str:
     """
-    Creates a new sheet within an existing spreadsheet.
+    Creates a new sheet within an existing spreadsheet. Optionally duplicates an
+    existing sheet, preserving all values, formulas, formatting, conditional
+    formatting, and column/row dimensions.
 
     Args:
         user_google_email (str): The user's Google email address. Required.
         spreadsheet_id (str): The ID of the spreadsheet. Required.
         sheet_name (str): The name of the new sheet. Required.
+        source_sheet_name (Optional[str]): Name of an existing sheet to duplicate.
+            When provided, creates a copy of that sheet instead of a blank one.
+        insert_sheet_index (Optional[int]): 0-based position for the new sheet.
+            0 makes it the first sheet. If not provided, the new sheet is
+            appended at the end.
 
     Returns:
         str: Confirmation message of the successful sheet creation.
     """
+    if source_sheet_name is not None:
+        logger.info(
+            f"[create_sheet] Duplicate invoked. Email: '{user_google_email}', "
+            f"Spreadsheet: {spreadsheet_id}, Source: {source_sheet_name}"
+        )
+
+        spreadsheet = await asyncio.to_thread(
+            service.spreadsheets()
+            .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
+            .execute
+        )
+
+        sheets = spreadsheet.get("sheets", [])
+        source_sheet = _select_sheet(sheets, source_sheet_name)
+        source_sheet_id = source_sheet["properties"]["sheetId"]
+
+        dup_request = {"sourceSheetId": source_sheet_id, "newSheetName": sheet_name}
+        if insert_sheet_index is not None:
+            dup_request["insertSheetIndex"] = insert_sheet_index
+
+        request_body = {"requests": [{"duplicateSheet": dup_request}]}
+
+        response = await asyncio.to_thread(
+            service.spreadsheets()
+            .batchUpdate(spreadsheetId=spreadsheet_id, body=request_body)
+            .execute
+        )
+
+        new_props = response["replies"][0]["duplicateSheet"]["properties"]
+        new_id = new_props["sheetId"]
+        new_title = new_props["title"]
+
+        text_output = (
+            f"Successfully duplicated '{source_sheet_name}' to '{new_title}' "
+            f"(ID: {new_id}) in spreadsheet {spreadsheet_id} for {user_google_email}."
+        )
+
+        logger.info(
+            f"Successfully duplicated sheet for {user_google_email}. "
+            f"New sheet: '{new_title}' (ID: {new_id})"
+        )
+        return text_output
+
     logger.info(
         f"[create_sheet] Invoked. Email: '{user_google_email}', Spreadsheet: {spreadsheet_id}, Sheet: {sheet_name}"
     )
 
-    request_body = {"requests": [{"addSheet": {"properties": {"title": sheet_name}}}]}
+    add_request: dict = {"properties": {"title": sheet_name}}
+    if insert_sheet_index is not None:
+        add_request["properties"]["index"] = insert_sheet_index
+
+    request_body = {"requests": [{"addSheet": add_request}]}
 
     response = await asyncio.to_thread(
         service.spreadsheets()
@@ -1290,83 +1346,6 @@ async def create_sheet(
 
     logger.info(
         f"Successfully created sheet for {user_google_email}. Sheet ID: {sheet_id}"
-    )
-    return text_output
-
-
-@server.tool()
-@handle_http_errors("duplicate_sheet", service_type="sheets")
-@require_google_service("sheets", "sheets_write")
-async def duplicate_sheet(
-    service,
-    user_google_email: str,
-    spreadsheet_id: str,
-    source_sheet_name: str,
-    new_sheet_name: Optional[str] = None,
-    insert_sheet_index: Optional[int] = None,
-) -> str:
-    """
-    Duplicates an existing sheet within a spreadsheet, preserving all values,
-    formulas, formatting, conditional formatting, and column/row dimensions.
-
-    Args:
-        user_google_email (str): The user's Google email address. Required.
-        spreadsheet_id (str): The ID of the spreadsheet. Required.
-        source_sheet_name (str): The name of the sheet to duplicate. Required.
-        new_sheet_name (Optional[str]): Name for the new sheet. If not provided,
-            defaults to "Copy of <source_sheet_name>".
-        insert_sheet_index (Optional[int]): 0-based position for the new sheet.
-            0 makes it the first sheet. If not provided, the new sheet is
-            appended at the end.
-
-    Returns:
-        str: Confirmation message with the new sheet's name and ID.
-    """
-    logger.info(
-        f"[duplicate_sheet] Invoked. Email: '{user_google_email}', "
-        f"Spreadsheet: {spreadsheet_id}, Source: {source_sheet_name}"
-    )
-
-    # Fetch spreadsheet metadata to resolve sheet name to ID
-    spreadsheet = await asyncio.to_thread(
-        service.spreadsheets()
-        .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
-        .execute
-    )
-
-    sheets = spreadsheet.get("sheets", [])
-    source_sheet = _select_sheet(sheets, source_sheet_name)
-    source_sheet_id = source_sheet["properties"]["sheetId"]
-
-    # Build the DuplicateSheet request
-    dup_request = {
-        "sourceSheetId": source_sheet_id,
-    }
-    if new_sheet_name is not None:
-        dup_request["newSheetName"] = new_sheet_name
-    if insert_sheet_index is not None:
-        dup_request["insertSheetIndex"] = insert_sheet_index
-
-    request_body = {"requests": [{"duplicateSheet": dup_request}]}
-
-    response = await asyncio.to_thread(
-        service.spreadsheets()
-        .batchUpdate(spreadsheetId=spreadsheet_id, body=request_body)
-        .execute
-    )
-
-    new_props = response["replies"][0]["duplicateSheet"]["properties"]
-    new_id = new_props["sheetId"]
-    new_title = new_props["title"]
-
-    text_output = (
-        f"Successfully duplicated '{source_sheet_name}' to '{new_title}' "
-        f"(ID: {new_id}) in spreadsheet {spreadsheet_id} for {user_google_email}."
-    )
-
-    logger.info(
-        f"Successfully duplicated sheet for {user_google_email}. "
-        f"New sheet: '{new_title}' (ID: {new_id})"
     )
     return text_output
 
