@@ -27,7 +27,7 @@ from auth.oauth_responses import (
     create_server_error_response,
 )
 from auth.auth_info_middleware import AuthInfoMiddleware
-from auth.scopes import BASE_SCOPES, SCOPES, get_current_scopes  # noqa
+from auth.scopes import PROTOCOL_AUTH_SCOPES, SCOPES, get_current_scopes  # noqa
 from core.config import (
     USER_GOOGLE_EMAIL,
     get_transport_mode,
@@ -260,7 +260,7 @@ def configure_server_for_http():
             from fastmcp.server.auth.jwt_issuer import derive_jwt_key
 
             provider_valid_scopes: List[str] = sorted(get_current_scopes())
-            provider_required_scopes: List[str] = sorted(BASE_SCOPES)
+            provider_required_scopes: List[str] = sorted(PROTOCOL_AUTH_SCOPES)
 
             client_storage = None
             jwt_signing_key_override = (
