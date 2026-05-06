@@ -2202,6 +2202,23 @@ async def update_paragraph_style(
     return f"Applied paragraph formatting ({', '.join(summary_parts)}) to range {start_index}-{end_index} in document {document_id}. Link: {link}"
 
 
+def _apply_doc_pagination(text: str, offset: int, max_chars: Optional[int]) -> str:
+    """Slice *text* by character window and prepend a pagination header when active."""
+    total_chars = len(text)
+    if max_chars is None and offset == 0:
+        return text
+    start = max(0, offset)
+    end = start + max_chars if max_chars is not None else total_chars
+    sliced = text[start:end]
+    remaining = max(0, total_chars - end)
+    header = (
+        f"[Showing chars {start}–{min(end, total_chars)} of {total_chars} total"
+        + (f"; {remaining} chars remaining — call again with offset={end}" if remaining > 0 else "")
+        + "]\n\n"
+    )
+    return header + sliced
+
+
 @server.tool()
 @handle_http_errors("get_doc_as_markdown", is_read_only=True, service_type="docs")
 @require_multiple_services(
@@ -2223,6 +2240,8 @@ async def get_doc_as_markdown(
     comment_mode: str = "inline",
     include_resolved: bool = False,
     suggestions_view_mode: str = "DEFAULT_FOR_CURRENT_ACCESS",
+    offset: int = 0,
+    max_chars: Optional[int] = None,
 ) -> str:
     """
     Reads a Google Doc and returns it as clean Markdown with optional comment context.
@@ -2233,6 +2252,10 @@ async def get_doc_as_markdown(
 
     When comments are included (the default), each comment's anchor text — the specific
     text the comment was attached to — is preserved, giving full context for the discussion.
+
+    Use offset and max_chars to page through large documents without saturating
+    context. Call with offset=0 first; if the response header reports more chars
+    remaining, repeat with offset incremented by max_chars until exhausted.
 
     Args:
         user_google_email: User's Google email address
@@ -2248,9 +2271,14 @@ async def get_doc_as_markdown(
             - "SUGGESTIONS_INLINE": Suggested changes appear inline in the document
             - "PREVIEW_SUGGESTIONS_ACCEPTED": Preview as if all suggestions were accepted
             - "PREVIEW_WITHOUT_SUGGESTIONS": Preview as if all suggestions were rejected
+        offset: Character offset into the Markdown to start reading from (default 0).
+        max_chars: Maximum number of characters to return. If omitted the full
+            document is returned. Recommended value for large docs: 50000.
 
     Returns:
-        str: The document content as Markdown, optionally with comments
+        str: The document content as Markdown, optionally with comments. When
+            offset/max_chars are used a header line reports total character count
+            and remaining characters so the caller knows whether to fetch more.
     """
     # Extract doc ID from URL if a full URL was provided
     url_match = re.search(r"/d/([\w-]+)", document_id)
@@ -2292,7 +2320,7 @@ async def get_doc_as_markdown(
     markdown = convert_doc_to_markdown(doc)
 
     if not include_comments or comment_mode == "none":
-        return markdown
+        return _apply_doc_pagination(markdown, offset, max_chars)
 
     # Fetch comments via Drive API
     all_comments = []
@@ -2322,13 +2350,15 @@ async def get_doc_as_markdown(
     )
 
     if not comments:
-        return markdown
+        return _apply_doc_pagination(markdown, offset, max_chars)
 
     if comment_mode == "inline":
-        return format_comments_inline(markdown, comments)
+        full = format_comments_inline(markdown, comments)
     else:
         appendix = format_comments_appendix(comments)
-        return markdown.rstrip("\n") + "\n\n" + appendix
+        full = markdown.rstrip("\n") + "\n\n" + appendix
+
+    return _apply_doc_pagination(full, offset, max_chars)
 
 
 @server.tool()

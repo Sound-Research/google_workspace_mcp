@@ -243,6 +243,8 @@ async def get_drive_file_content(
     service,
     user_google_email: str,
     file_id: str,
+    offset: int = 0,
+    max_chars: Optional[int] = None,
 ) -> str:
     """
     Retrieves the content of a specific Google Drive file by ID, supporting files in shared drives.
@@ -255,12 +257,21 @@ async def get_drive_file_content(
     • Images → returned as base64 with MIME metadata for multimodal clients.
     • Any other file → downloaded; tries UTF-8 decode, else notes binary.
 
+    Use offset and max_chars to page through large documents without saturating
+    context. Call with offset=0 first; if the response header reports more chars
+    remaining, repeat with offset incremented by max_chars until exhausted.
+
     Args:
         user_google_email: The user’s Google email address.
         file_id: Drive file ID.
+        offset: Character offset into the extracted text to start reading from (default 0).
+        max_chars: Maximum number of characters to return. If omitted the full
+            content is returned. Recommended value for large docs: 50000.
 
     Returns:
-        str: The file content as plain text with metadata header.
+        str: The file content as plain text with metadata header. When offset/
+            max_chars are used the header includes total character count and
+            remaining character count so the caller knows whether to fetch more.
     """
     logger.info(f"[get_drive_file_content] Invoked. File ID: '{file_id}'")
 
@@ -338,10 +349,29 @@ async def get_drive_file_content(
                 f"{len(file_content_bytes)} bytes]"
             )
 
+    # Apply character-level pagination when requested.
+    # Full extraction always happens first (binary formats require it) — we slice
+    # the resulting text so the caller gets a deterministic window.
+    total_chars = len(body_text)
+    if max_chars is not None or offset > 0:
+        start = max(0, offset)
+        end = start + max_chars if max_chars is not None else total_chars
+        body_text = body_text[start:end]
+        remaining = max(0, total_chars - end)
+        pagination_note = (
+            f"[Showing chars {start}–{min(end, total_chars)} of {total_chars} total"
+            + (f"; {remaining} chars remaining — call again with offset={end}" if remaining > 0 else "")
+            + "]\n\n"
+        )
+    else:
+        pagination_note = ""
+
     # Assemble response
     header = (
         f'File: "{file_name}" (ID: {file_id}, Type: {mime_type})\n'
-        f"Link: {file_metadata.get('webViewLink', '#')}\n\n--- CONTENT ---\n"
+        f"Link: {file_metadata.get('webViewLink', '#')}\n"
+        f"{pagination_note}"
+        f"\n--- CONTENT ---\n"
     )
     return header + body_text
 
