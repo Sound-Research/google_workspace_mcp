@@ -5,6 +5,7 @@ This module provides reusable comment management functions for Google Workspace 
 All Google Workspace apps (Docs, Sheets, Slides) use the Drive API for comment operations.
 """
 
+import json
 import logging
 import asyncio
 from typing import Optional
@@ -341,3 +342,115 @@ async def _resolve_comment_impl(
     created = reply.get("createdTime", "")
 
     return f"Comment {comment_id} has been resolved successfully.\\nResolve reply ID: {reply_id}\\nAuthor: {author}\\nCreated: {created}"
+
+
+# ---------------------------------------------------------------------------
+# Cross-file comment aggregation
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_comments_for_file(
+    service, file_id: str, include_resolved: bool
+) -> list[dict]:
+    """Fetch comments for a single file, including file name from Drive metadata.
+
+    Returns a list of comment dicts, each augmented with file_id and file_name.
+    """
+    fields = "comments(id,content,author,createdTime,modifiedTime,resolved,quotedFileContent,replies(id,content,author,createdTime,modifiedTime))"
+
+    comments_resp, file_resp = await asyncio.gather(
+        asyncio.to_thread(
+            service.comments().list(fileId=file_id, fields=fields).execute
+        ),
+        asyncio.to_thread(
+            service.files().get(fileId=file_id, fields="id,name").execute
+        ),
+        return_exceptions=True,
+    )
+
+    file_name = file_id  # fallback if metadata fetch fails
+    if isinstance(file_resp, dict):
+        file_name = file_resp.get("name", file_id)
+
+    if isinstance(comments_resp, Exception):
+        logger.warning(
+            f"[list_comments_across_files] Failed to fetch comments for {file_id}: {comments_resp}"
+        )
+        return []
+
+    comments = comments_resp.get("comments", [])
+    result = []
+    for c in comments:
+        if not include_resolved and c.get("resolved", False):
+            continue
+        result.append(
+            {
+                "file_id": file_id,
+                "file_name": file_name,
+                "comment_id": c.get("id"),
+                "author": c.get("author", {}).get("displayName"),
+                "content": c.get("content"),
+                "created_time": c.get("createdTime"),
+                "modified_time": c.get("modifiedTime"),
+                "resolved": c.get("resolved", False),
+                "quoted_text": c.get("quotedFileContent", {}).get("value"),
+                "replies": [
+                    {
+                        "reply_id": r.get("id"),
+                        "author": r.get("author", {}).get("displayName"),
+                        "content": r.get("content"),
+                        "created_time": r.get("createdTime"),
+                        "modified_time": r.get("modifiedTime"),
+                    }
+                    for r in c.get("replies", [])
+                ],
+            }
+        )
+    return result
+
+
+@server.tool(
+    title="List Comments Across Files",
+    annotations=READ_COMMENT_ANNOTATIONS,
+)
+@require_google_service("drive", "drive_read")
+@handle_http_errors("list_comments_across_files", is_read_only=True, service_type="drive")
+async def list_comments_across_files(
+    service,
+    user_google_email: str,
+    file_ids: list[str],
+    include_resolved: bool = True,
+) -> str:
+    """Aggregate comments from multiple Drive files in a single call.
+
+    Fetches comments from all specified files concurrently and returns them as a
+    flat JSON array sorted by created_time ascending. Each entry includes file_id
+    and file_name so callers can identify the source document without a second
+    lookup.
+
+    Args:
+        user_google_email: Google account to authenticate as.
+        file_ids: List of Drive file IDs to aggregate comments from.
+        include_resolved: When False, resolved comments are excluded (default True).
+
+    Returns:
+        JSON object with a "comments" array (flat, sorted by created_time) and a
+        "summary" object keyed by file_id with per-file counts.
+    """
+    if not file_ids:
+        return json.dumps({"comments": [], "summary": {}})
+
+    per_file = await asyncio.gather(
+        *[_fetch_comments_for_file(service, fid, include_resolved) for fid in file_ids]
+    )
+
+    all_comments: list[dict] = []
+    summary: dict[str, dict] = {}
+    for fid, comments in zip(file_ids, per_file):
+        file_name = comments[0]["file_name"] if comments else fid
+        summary[fid] = {"file_name": file_name, "count": len(comments)}
+        all_comments.extend(comments)
+
+    all_comments.sort(key=lambda c: c.get("created_time") or "")
+
+    return json.dumps({"comments": all_comments, "summary": summary}, indent=2)
