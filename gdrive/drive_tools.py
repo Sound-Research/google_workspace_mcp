@@ -451,7 +451,9 @@ async def _fetch_single_file_content(service, file_id: str) -> Dict[str, Any]:
             "error": None,
         }
     except Exception as exc:
-        logger.warning(f"[batch_get_drive_file_content] Failed to fetch '{file_id}': {exc}")
+        logger.warning(
+            f"[batch_get_drive_file_content] Failed to fetch '{file_id}': {exc}"
+        )
         return {
             "id": file_id,
             "name": None,
@@ -472,7 +474,9 @@ _BATCH_CONCURRENCY_LIMIT = 5
         openWorldHint=True,
     ),
 )
-@handle_http_errors("batch_get_drive_file_content", is_read_only=True, service_type="drive")
+@handle_http_errors(
+    "batch_get_drive_file_content", is_read_only=True, service_type="drive"
+)
 @require_google_service("drive", "drive_read")
 async def batch_get_drive_file_content(
     service,
