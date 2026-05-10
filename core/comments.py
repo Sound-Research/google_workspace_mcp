@@ -414,7 +414,9 @@ async def _fetch_comments_for_file(
     annotations=READ_COMMENT_ANNOTATIONS,
 )
 @require_google_service("drive", "drive_read")
-@handle_http_errors("list_comments_across_files", is_read_only=True, service_type="drive")
+@handle_http_errors(
+    "list_comments_across_files", is_read_only=True, service_type="drive"
+)
 async def list_comments_across_files(
     service,
     user_google_email: str,

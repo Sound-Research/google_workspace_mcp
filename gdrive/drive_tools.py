@@ -5,6 +5,7 @@ This module provides MCP tools for interacting with Google Drive API.
 """
 
 import asyncio
+import json
 import logging
 import io
 import base64
@@ -362,6 +363,170 @@ async def get_drive_file_content(
         f"Link: {file_metadata.get('webViewLink', '#')}\n\n--- CONTENT ---\n"
     )
     return header + body_text
+
+
+async def _fetch_single_file_content(service, file_id: str) -> Dict[str, Any]:
+    """Fetch content for one Drive file, returning a result dict with id/name/content/error.
+
+    Shares the same extraction logic as get_drive_file_content but returns a structured
+    dict instead of a formatted string, so the batch tool can aggregate results cleanly.
+    """
+    try:
+        resolved_file_id, file_metadata = await resolve_drive_item(
+            service,
+            file_id,
+            extra_fields="name, webViewLink",
+        )
+        file_id = resolved_file_id
+        mime_type = file_metadata.get("mimeType", "")
+        file_name = file_metadata.get("name", "Unknown File")
+        export_mime_type = {
+            "application/vnd.google-apps.document": "text/plain",
+            "application/vnd.google-apps.spreadsheet": "text/csv",
+            "application/vnd.google-apps.presentation": "text/plain",
+        }.get(mime_type)
+
+        request_obj = (
+            service.files().export_media(fileId=file_id, mimeType=export_mime_type)
+            if export_mime_type
+            else service.files().get_media(fileId=file_id)
+        )
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request_obj)
+        loop = asyncio.get_event_loop()
+        done = False
+        while not done:
+            status, done = await loop.run_in_executor(None, downloader.next_chunk)
+
+        file_content_bytes = fh.getvalue()
+
+        office_mime_types = {
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+
+        if mime_type in office_mime_types:
+            office_text = await asyncio.to_thread(
+                extract_office_xml_text, file_content_bytes, mime_type
+            )
+            if office_text:
+                body_text = office_text
+            else:
+                try:
+                    body_text = file_content_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    body_text = (
+                        f"[Binary or unsupported text encoding for mimeType '{mime_type}' - "
+                        f"{len(file_content_bytes)} bytes]"
+                    )
+        elif mime_type == "application/pdf":
+            pdf_text = await asyncio.to_thread(extract_pdf_text, file_content_bytes)
+            if pdf_text:
+                body_text = pdf_text
+            else:
+                body_text = (
+                    f"[Could not extract text from PDF ({len(file_content_bytes)} bytes) "
+                    f"- the file may be scanned/image-only. "
+                    f"Use get_drive_file_download_url to get a direct download link instead.]"
+                )
+        elif mime_type in IMAGE_MIME_TYPES:
+            body_text = encode_image_content(file_content_bytes, mime_type)
+        else:
+            try:
+                body_text = file_content_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                body_text = (
+                    f"[Binary or unsupported text encoding for mimeType '{mime_type}' - "
+                    f"{len(file_content_bytes)} bytes]"
+                )
+
+        header = (
+            f'File: "{file_name}" (ID: {file_id}, Type: {mime_type})\n'
+            f"Link: {file_metadata.get('webViewLink', '#')}\n\n--- CONTENT ---\n"
+        )
+        return {
+            "id": file_id,
+            "name": file_name,
+            "content": header + body_text,
+            "error": None,
+        }
+    except Exception as exc:
+        logger.warning(
+            f"[batch_get_drive_file_content] Failed to fetch '{file_id}': {exc}"
+        )
+        return {
+            "id": file_id,
+            "name": None,
+            "content": None,
+            "error": str(exc),
+        }
+
+
+_BATCH_CONCURRENCY_LIMIT = 5
+
+
+@server.tool(
+    title="Batch Get Drive File Content",
+    annotations=ToolAnnotations(
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=True,
+    ),
+)
+@handle_http_errors(
+    "batch_get_drive_file_content", is_read_only=True, service_type="drive"
+)
+@require_google_service("drive", "drive_read")
+async def batch_get_drive_file_content(
+    service,
+    user_google_email: str,
+    file_ids: List[str],
+) -> str:
+    """
+    Retrieves the content of multiple Google Drive files in a single call.
+
+    Fetches up to `_BATCH_CONCURRENCY_LIMIT` files concurrently to minimise wall-clock
+    latency for multi-document workflows (e.g. "summarise all invoices from last quarter").
+    Each file is processed with the same extraction logic as get_drive_file_content:
+
+    • Native Google Docs, Sheets, Slides → exported as text / CSV.
+    • Office files (.docx, .xlsx, .pptx) → unzipped & parsed to extract readable text.
+    • PDFs → text extracted with pypdf; scanned/image-only PDFs fall back to a hint.
+    • Images → returned as base64 with MIME metadata.
+    • Any other file → downloaded; tries UTF-8 decode, else notes binary.
+
+    Files that fail (missing, permission denied, etc.) are returned with a non-null
+    `error` field rather than aborting the whole batch.
+
+    Args:
+        user_google_email: The user's Google email address.
+        file_ids: List of Drive file IDs to fetch (max 50 recommended).
+
+    Returns:
+        str: JSON-formatted array of objects, each with fields:
+             - id (str): the file ID that was requested
+             - name (str|null): filename if successfully retrieved
+             - content (str|null): full text content with metadata header, or null on error
+             - error (str|null): error message if fetch failed, null on success
+    """
+    logger.info(
+        f"[batch_get_drive_file_content] Invoked. "
+        f"Email: '{user_google_email}', file_ids count: {len(file_ids)}"
+    )
+
+    if not file_ids:
+        return json.dumps([])
+
+    semaphore = asyncio.Semaphore(_BATCH_CONCURRENCY_LIMIT)
+
+    async def _bounded_fetch(fid: str) -> Dict[str, Any]:
+        async with semaphore:
+            return await _fetch_single_file_content(service, fid)
+
+    results = await asyncio.gather(*[_bounded_fetch(fid) for fid in file_ids])
+    return json.dumps(list(results), ensure_ascii=False, indent=2)
 
 
 @server.tool(
