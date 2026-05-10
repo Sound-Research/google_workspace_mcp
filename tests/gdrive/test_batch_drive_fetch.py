@@ -64,10 +64,13 @@ async def test_batch_all_succeed():
     mock_service = Mock()
     mock_service.files().export_media.return_value = "req"
 
-    with patch(
-        "gdrive.drive_tools.resolve_drive_item",
-        side_effect=_make_resolve_side_effect(file_map),
-    ), _patch_downloader(b"hello content"):
+    with (
+        patch(
+            "gdrive.drive_tools.resolve_drive_item",
+            side_effect=_make_resolve_side_effect(file_map),
+        ),
+        _patch_downloader(b"hello content"),
+    ):
         raw = await _unwrap(batch_get_drive_file_content)(
             service=mock_service,
             user_google_email="user@example.com",
@@ -110,10 +113,13 @@ async def test_batch_partial_failure():
     mock_service = Mock()
     mock_service.files().get_media.return_value = "req"
 
-    with patch(
-        "gdrive.drive_tools.resolve_drive_item",
-        side_effect=_resolve_with_error,
-    ), _patch_downloader(b"some text"):
+    with (
+        patch(
+            "gdrive.drive_tools.resolve_drive_item",
+            side_effect=_resolve_with_error,
+        ),
+        _patch_downloader(b"some text"),
+    ):
         raw = await _unwrap(batch_get_drive_file_content)(
             service=mock_service,
             user_google_email="user@example.com",
@@ -152,10 +158,13 @@ async def test_batch_preserves_input_order():
     mock_service = Mock()
     mock_service.files().get_media.return_value = "req"
 
-    with patch(
-        "gdrive.drive_tools.resolve_drive_item",
-        side_effect=_make_resolve_side_effect(file_map),
-    ), _patch_downloader(b"x"):
+    with (
+        patch(
+            "gdrive.drive_tools.resolve_drive_item",
+            side_effect=_make_resolve_side_effect(file_map),
+        ),
+        _patch_downloader(b"x"),
+    ):
         raw = await _unwrap(batch_get_drive_file_content)(
             service=mock_service,
             user_google_email="user@example.com",
