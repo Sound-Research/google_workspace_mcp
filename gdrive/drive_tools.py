@@ -5,6 +5,7 @@ This module provides MCP tools for interacting with Google Drive API.
 """
 
 import asyncio
+import json
 import logging
 import io
 import base64
@@ -510,8 +511,6 @@ async def batch_get_drive_file_content(
              - content (str|null): full text content with metadata header, or null on error
              - error (str|null): error message if fetch failed, null on success
     """
-    import json
-
     logger.info(
         f"[batch_get_drive_file_content] Invoked. "
         f"Email: '{user_google_email}', file_ids count: {len(file_ids)}"
